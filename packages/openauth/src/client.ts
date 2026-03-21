@@ -179,6 +179,17 @@ export interface AuthorizeOptions {
    * If there's only one provider configured, the user will be redirected to that.
    */
   provider?: string
+  /**
+   * audience to use for the authorization request. This will be used as the `aud` claim in the token.
+   * This will be verified and if the token does not have/match the expected audience, the verify call will fail.
+   *
+   * ```ts
+   * {
+   *   audience: "api"
+   * }
+   * ```
+   */
+  audience?: string
 }
 
 export interface AuthorizeResult {
@@ -287,7 +298,16 @@ export interface VerifyOptions {
    */
   issuer?: string
   /**
-   * @internal
+   * The expected audience (aud) claim value. This should match the client ID
+   * that the token was issued for. If not provided, defaults to the client's
+   * configured clientID.
+   *
+   * @example
+   * ```ts
+   * {
+   *   audience: "api"
+   * }
+   * ```
    */
   audience?: string
   /**
@@ -588,6 +608,7 @@ export function createClient(input: ClientInput): Client {
       result.searchParams.set("redirect_uri", redirectURI)
       result.searchParams.set("response_type", response)
       result.searchParams.set("state", challenge.state)
+      result.searchParams.set("audience", opts?.audience || input.clientID)
       if (opts?.provider) result.searchParams.set("provider", opts.provider)
       if (opts?.pkce && response === "code") {
         const pkce = await generatePKCE()
@@ -701,6 +722,7 @@ export function createClient(input: ClientInput): Client {
       options?: VerifyOptions,
     ): Promise<VerifyResult<T> | VerifyError> {
       const jwks = await getJWKS()
+      const expectedAudience = options?.audience || input.clientID
       try {
         const result = await jwtVerify<{
           mode: "access"
@@ -708,6 +730,7 @@ export function createClient(input: ClientInput): Client {
           properties: v1.InferInput<T[keyof T]>
         }>(token, jwks, {
           issuer,
+          audience: expectedAudience,
         })
         const validated = await subjects[result.payload.type][
           "~standard"
@@ -733,6 +756,7 @@ export function createClient(input: ClientInput): Client {
             {
               refresh: refreshed.tokens!.refresh,
               issuer,
+              audience: expectedAudience,
               fetch: options?.fetch,
             },
           )
